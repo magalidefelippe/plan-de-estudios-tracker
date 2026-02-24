@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Sora, DM_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const sora = Sora({
@@ -40,6 +41,7 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased bg-th-base text-th-ink">
         {children}
+        <Analytics />
       </body>
     </html>
   );
