@@ -158,9 +158,188 @@ export interface ParsePlanResult {
   subjects: Subject[];
   orientations: OrientationGroup[];
   warnings: string[];
+  detectedName?: string;
+}
+
+/* ── "Plan de Estudios" format (tables with Código / Año / Correlativas / H.Sem / H.Tot) ── */
+
+const PLAN_ESTUDIOS_COLUMN_RE = /C[oó]digo\s+Materia\s+A[nñ]o/i;
+
+function isPlanDeEstudiosFormat(text: string): boolean {
+  const norm = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return /Codigo\s+Materia\s+Ano\s+Materias?\s+Correlativas?/i.test(norm);
+}
+
+function titleCaseCareer(s: string): string {
+  const small = new Set([
+    "en", "de", "del", "la", "el", "y", "e", "los", "las", "un", "una", "al", "a", "con", "por", "para",
+  ]);
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w, i) => (i > 0 && small.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(" ");
+}
+
+function parsePlanDeEstudios(text: string): ParsePlanResult {
+  const lines = text.split("\n");
+  const nuclei: NucleusConfig[] = [];
+  const subjects: Subject[] = [];
+  const warnings: string[] = [];
+
+  // Try to extract career name from "(NNN) - NAME" pattern
+  let detectedName: string | undefined;
+  const careerMatch = text.match(/\(\d{2,}\)\s*-\s*(.+)/);
+  if (careerMatch) {
+    detectedName = titleCaseCareer(careerMatch[1].trim());
+  }
+
+  // Separate content lines from page-header noise.
+  // We start in "header mode" (skip until the first column-header row).
+  // A "Fecha de Impresión" line re-enters header mode (page break).
+  let inHeader = true;
+  const contentLines: string[] = [];
+  const PAGE_BREAK_RE = /Fecha\s+de\s+Impresi[oó]n/i;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (PLAN_ESTUDIOS_COLUMN_RE.test(line)) {
+      inHeader = false;
+      continue;
+    }
+    if (PAGE_BREAK_RE.test(line)) {
+      inHeader = true;
+      continue;
+    }
+    if (inHeader) continue;
+
+    contentLines.push(line);
+  }
+
+  // Regexes for subject parsing
+  const CODE_RE = /^(\d{4,5})\s+(.+)$/;
+  const DATA_RE = /^(\d)\s+(.+)\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)\s*$/;
+
+  interface RawSubject {
+    code: string;
+    nameParts: string[];
+    year: number;
+    correlatives: string[];
+    weeklyHours: number;
+    totalHours: number;
+  }
+
+  const rawSubjects: RawSubject[] = [];
+  let curCode: string | null = null;
+  let curName: string[] = [];
+
+  for (const line of contentLines) {
+    // 1. Data line closes current subject
+    const dm = line.match(DATA_RE);
+    if (dm) {
+      if (curCode) {
+        const year = parseInt(dm[1], 10);
+        const corrStr = dm[2].trim();
+        const hSem = parseFloat(dm[3].replace(",", "."));
+        const hTot = parseFloat(dm[4].replace(",", "."));
+
+        let correlatives: string[] = [];
+        if (corrStr !== "---") {
+          correlatives = corrStr.split(/\s+-\s+/).map((c) => c.trim()).filter(Boolean);
+        }
+
+        rawSubjects.push({
+          code: curCode,
+          nameParts: [...curName],
+          year,
+          correlatives,
+          weeklyHours: hSem,
+          totalHours: hTot,
+        });
+        curCode = null;
+        curName = [];
+      }
+      continue;
+    }
+
+    // 2. Code line starts a new subject
+    const cm = line.match(CODE_RE);
+    if (cm) {
+      curCode = cm[1];
+      curName = [cm[2]];
+      continue;
+    }
+
+    // 3. Name continuation
+    if (curCode) {
+      curName.push(line);
+    }
+  }
+
+  // Build nuclei from years
+  const yearSet = new Set<number>();
+  for (const s of rawSubjects) yearSet.add(s.year);
+  const years = Array.from(yearSet).sort((a, b) => a - b);
+  const yearNucleus = new Map<number, NucleusConfig>();
+
+  for (let i = 0; i < years.length; i++) {
+    const y = years[i];
+    const p = PALETTE[i % PALETTE.length];
+    const nucleus: NucleusConfig = {
+      id: `year-${y}`,
+      label: `Año ${y}`,
+      minRequired: null,
+      accent: p.accent,
+      accentSoft: p.accentSoft,
+      icon: getIconForIndex(i),
+    };
+    nuclei.push(nucleus);
+    yearNucleus.set(y, nucleus);
+  }
+
+  // Build subjects
+  const codeSet = new Set(rawSubjects.map((s) => s.code));
+  const seenCodes = new Set<string>();
+
+  for (const raw of rawSubjects) {
+    if (seenCodes.has(raw.code)) {
+      warnings.push(`Código duplicado ignorado: ${raw.code}`);
+      continue;
+    }
+    seenCodes.add(raw.code);
+
+    const name = raw.nameParts.join(" ").replace(/\s+/g, " ").trim();
+    const nucleus = yearNucleus.get(raw.year)!;
+    const prerequisites = raw.correlatives.filter((c) => codeSet.has(c));
+
+    if (raw.correlatives.length > 0 && prerequisites.length < raw.correlatives.length) {
+      const missing = raw.correlatives.filter((c) => !codeSet.has(c));
+      warnings.push(`${name}: correlativas no encontradas en el plan: ${missing.join(", ")}`);
+    }
+
+    subjects.push({
+      id: raw.code,
+      name,
+      weeklyHours: raw.weeklyHours,
+      totalHours: raw.totalHours,
+      credits: Math.round(raw.weeklyHours * 2),
+      nucleusId: nucleus.id,
+      prerequisites,
+    });
+  }
+
+  if (subjects.length === 0) warnings.push("No se encontraron materias en el texto pegado.");
+
+  return { nuclei, subjects, orientations: [], warnings, detectedName };
 }
 
 export function parsePlan(text: string): ParsePlanResult {
+  if (isPlanDeEstudiosFormat(text)) {
+    return parsePlanDeEstudios(text);
+  }
+
   const lines = text.split("\n");
   const nuclei: NucleusConfig[] = [];
   const subjects: Subject[] = [];

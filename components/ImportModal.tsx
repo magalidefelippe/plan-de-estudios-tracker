@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import { X, Search, Check, GraduationCap, FileText, CheckCircle } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { parsePlan, parseApproved } from "@/lib/parser";
@@ -34,6 +34,13 @@ export default function ImportModal({ onClose, initialStep = "choose" }: ImportM
     if (!planText.trim()) return null;
     return parsePlan(planText);
   }, [planText]);
+
+  useEffect(() => {
+    if (parsed?.detectedName && !careerName.trim()) {
+      setCareerName(parsed.detectedName);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed?.detectedName]);
 
   const orientations = parsed?.orientations ?? [];
 
