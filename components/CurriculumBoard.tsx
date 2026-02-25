@@ -270,7 +270,7 @@ export default function CurriculumBoard() {
             value={search}
             onChange={handleSearch}
             placeholder="Buscar materia..."
-            className="w-full bg-th-surface border border-th-border rounded-xl text-sm text-th-ink placeholder:text-th-ink-3 pl-10 pr-3 py-2.5 font-body focus:outline-none focus:border-th-border-em focus:ring-1 focus:ring-th-border-em transition-all duration-200"
+            className="w-full bg-th-surface border border-th-border rounded-xl text-base text-th-ink placeholder:text-th-ink-3 pl-10 pr-3 py-2.5 font-body focus:outline-none focus:border-th-border-em focus:ring-1 focus:ring-th-border-em transition-all duration-200"
             style={{ boxShadow: "var(--th-shadow-sm)" }}
           />
         </div>

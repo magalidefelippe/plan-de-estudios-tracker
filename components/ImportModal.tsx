@@ -15,7 +15,7 @@ interface ImportModalProps {
 }
 
 const INPUT_CLS = `w-full bg-th-surface border border-th-border rounded-xl
-  text-sm text-th-ink placeholder:text-th-ink-3 px-3 py-2.5 font-body
+  text-base text-th-ink placeholder:text-th-ink-3 px-3 py-2.5 font-body
   focus:outline-none focus:border-th-border-em focus:ring-1 focus:ring-th-border-em
   transition-all duration-200`;
 
@@ -433,7 +433,7 @@ function ManageStep({ search, onSearchChange, onBack, onDone }: {
                     const n = parseInt(v, 10);
                     if (n >= 1 && n <= 10) setLocalGrade(subject.id, n);
                   }}
-                  className="w-10 text-center text-xs font-bold tabular-nums shrink-0
+                  className="w-12 text-center text-base font-bold tabular-nums shrink-0
                     bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400
                     border border-emerald-200 dark:border-emerald-500/20 rounded-lg py-1 font-heading
                     focus:outline-none focus:border-emerald-400 dark:focus:border-emerald-500/40
